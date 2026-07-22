@@ -1,0 +1,29 @@
+PrintGuard Windows Service 安裝版
+================================
+
+安裝：
+1. 將 ZIP 完整解壓縮到 Windows Print Server。
+2. 以滑鼠右鍵執行 Install-PrintGuard-Service.cmd；系統會要求系統管理員權限。
+3. 安裝完成後到 services.msc 確認「PrintGuard 列印治理服務」為執行中。
+4. Server 本機可開啟 http://127.0.0.1:8080。
+5. 公司網域網路內的管理電腦可使用 http://PrintServer-IP:8080。
+
+安裝器只開放 Windows 防火牆 Domain Profile 的 TCP 8080；Private 與 Public Profile 不開放。
+網頁包含 AD 使用者、文件名稱及政策設定，請勿將 8080 透過 NAT 或路由器直接公開到 Internet。
+
+安裝程式會移除舊 PrintGuard 工作排程，保留：
+C:\ProgramData\PrintGuard\data\printguard.db
+C:\ProgramData\PrintGuard\logs
+C:\ProgramData\PrintGuard\imports
+
+狀態檢查：
+C:\ProgramData\PrintGuard\scripts\Status-PrintGuard-Service.ps1
+
+解除安裝（保留資料）：
+C:\ProgramData\PrintGuard\scripts\Uninstall-PrintGuard-Service.ps1
+
+服務使用 LocalSystem 執行、延遲自動啟動，並依賴 Windows Print Spooler。
+Service Host 會監控 Server 與 Native Agent；子程序異常退出後5秒重啟。
+SCM 服務本身失敗時也設定三次自動恢復。
+
+正式印表機目前用於監控與報表。政策刪除安全限制仍只允許名稱包含 _test 的佇列。
