@@ -14,6 +14,18 @@ SHA-256：`04BEB7486A3B2CE33760CAC3A7BB36428C7F42B66E43A06A3EFBACCF1CABD681`
 - 不建立LAN防火牆規則。
 - 保留供本機操作評估及回復。
 
+## v0.12.1 單一 EXE 安裝版
+
+檔案：`PrintGuard-Setup-0.12.1.exe`
+
+- 以 Windows Service 自動啟動 Server 與 Native Agent。
+- 公司 Domain 網路可使用 Print Server IP 的 TCP 8080，並提供管理者登入驗證。
+- 安裝同版本或較新版本屬於升級，會保留 `C:\ProgramData\PrintGuard` 的資料庫、Log 與匯入資料。
+- 從 Windows「已安裝的應用程式」主動解除安裝時，會先顯示永久刪除警告；確認後會刪除服務、防火牆規則及整個 `C:\ProgramData\PrintGuard`，不保留資料庫或其他殘留檔案。
+- 安裝程式尚未簽署，正式大規模部署前建議加入程式碼簽章。
+
+SHA-256：`5481F2B99941A5B5AD91DE4426269E7EA5036AF15B3ED4778951D0ADF2D77754`
+
 ## r11 公司LAN版
 
 檔案：`PrintGuard-Windows-Service-LAN-Installer-20260722-r11.zip`
@@ -40,4 +52,3 @@ Get-NetFirewallRule -DisplayName 'PrintGuard Dashboard - Domain TCP 8080' -Error
 ## GitHub Release
 
 若要在GitHub提供安裝包，請將ZIP上傳為Release Asset，不要加入Git commit。上傳前再次核對SHA-256，並確認ZIP中沒有SQLite、Log、CSV、BIN診斷或公司環境設定。
-

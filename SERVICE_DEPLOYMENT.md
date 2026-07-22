@@ -1,5 +1,11 @@
 # PrintGuard Windows Service 部署
 
+## 建議部署方式
+
+正式部署改用單一 `PrintGuard-Setup.exe`。它會自動完成檔案安裝、服務建立、失敗復原設定、Domain 防火牆規則與解除安裝註冊，不需要使用者操作 CMD 或 PowerShell。詳細步驟請見 [INSTALLATION_AND_UNINSTALL_GUIDE.md](INSTALLATION_AND_UNINSTALL_GUIDE.md)。
+
+原有 `deployment-service` PowerShell 腳本保留作為開發、疑難排解與相容性工具，不再是一般管理者的主要安裝方式。
+
 ## 架構
 
 `PrintGuard.ServiceHost.exe` 是向 Windows Service Control Manager 註冊的原生服務程序。它負責啟動及監控：
@@ -51,4 +57,4 @@ CSV 自動匯入後會依結果移至 `imports\processed` 或 `imports\failed`�
 
 正式印表機目前用於監控與報表。為避免未驗證規則影響正式環境，政策刪除仍只允許名稱包含 `_test` 的佇列。
 
-r11 Dashboard 目前沒有登入驗證或 HTTPS，僅供受信任公司網域網路使用；不可將 TCP 8080 直接公開到 Internet。
+v0.12.1 Dashboard 已提供管理者登入驗證，但目前沒有內建 HTTPS，僅供受信任公司網域網路使用；不可將 TCP 8080 直接公開到 Internet。

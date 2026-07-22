@@ -1,6 +1,6 @@
 # PrintGuard 系統架構與程式碼責任說明
 
-文件版本：2026-07-22（對應 r10 本機版與 r11 LAN版）
+文件版本：2026-07-22（對應 r10／r11備份版與 v0.12.1 單一安裝程式）
 
 ## 1. 系統目的與目前範圍
 
@@ -276,9 +276,22 @@ Service Host 若發現 Server 或 Agent 意外離開，會等待5秒後重新啟
 | `deployment-service/Status-PrintGuard-Service.ps1` | 查看服務、子程序及 Dashboard 狀態 |
 | `deployment-service/Uninstall-PrintGuard-Service.ps1` | 移除服務；預設保留資料 |
 | `RELEASES.md` | r10／r11檔名、SHA-256、內部備份位置與版本切換方式 |
+| `installer/PrintGuard.iss` | 單一 EXE 安裝、升級、服務／防火牆建立及完整解除安裝規則 |
+| `installer/Build-Installer.ps1` | 重建 Server、Agent、Service Host 並編譯安裝程式 |
+| `installer/Test-Installer-Uninstall.ps1` | 驗證檔案安裝、測試資料庫建立與完整移除 |
+| `INSTALLATION_AND_UNINSTALL_GUIDE.md` | 管理者安裝、升級、備份、登入與解除安裝手冊 |
+
+### 9.5 網頁登入與狀態顯示
+
+| 檔案 | 責任 |
+|---|---|
+| `web/login.html`、`web/login.js` | 管理者登入頁面及登入請求 |
+| `web/auth-ui.js` | 登出、工作階段失效及受保護頁面共用邏輯 |
+| `web/auth.css` | 登入畫面樣式 |
+| `web/status.css` | 印表機真實 Queue 狀態視覺提示 |
 | `GITHUB_PUBLISHING.md` | GitHub可提交／不可提交資料及發佈前檢查 |
 
-### 9.5 測試、診斷與舊版
+### 9.6 測試、診斷與舊版
 
 | 路徑 | 狀態與用途 |
 |---|---|
@@ -306,7 +319,7 @@ Log 可能包含 AD 使用者、文件名稱、用戶端電腦及列印設定，
 - 不直接連線 AD；使用者名稱由 Spooler 工作提供。
 - Agent 以 LocalSystem 執行，因此可見範圍等同該 Print Server 上的 Queue 管理範圍。
 - r10 Dashboard 只能在 Print Server 本機使用；r11可從 Windows Domain 網路使用 Print Server IP 的 TCP 8080 連線，Private／Public Profile 仍由防火牆阻擋。
-- 網頁目前沒有另外的登入驗證、HTTPS、角色權限或 CSRF 防護，因此不得將8080透過 NAT、路由器或邊界防火牆直接公開到 Internet；應限制在受信任公司網路使用。
+- 網頁使用單一管理員帳號與 Session Cookie 驗證；目前仍沒有 HTTPS 或角色分級，因此不得將8080透過 NAT、路由器或邊界防火牆直接公開到 Internet，並應限制在受信任公司網路使用。
 - 政策強制目前只允許 `_test` Queue，避免未驗證規則影響正式列印。
 
 ## 12. 維運檢查清單
@@ -319,12 +332,44 @@ Log 可能包含 AD 使用者、文件名稱、用戶端電腦及列印設定，
 6. 檢查 `logs`、`imports\processed`、`imports\failed` 的30天清理是否正常。
 7. 正式開放政策阻擋前，先在 `_test` Queue 完成驅動及設備設定檔驗證。
 
-## 13. 已知限制與後續方向
+## 13. 管理員認證架構
+
+1. 未登入瀏覽 `/` 時，Server 只提供獨立的 `login.html`。
+2. 首次使用透過 `POST /api/auth/setup` 建立唯一管理員。
+3. 密碼以 PBKDF2-HMAC-SHA256、隨機 Salt 與310,000次迭代保存，不儲存明碼。
+4. 登入後取得 `HttpOnly`、`SameSite=Strict`、有效期8小時的 Cookie。
+5. 資料查詢、報表、CSV匯入、政策修改及稽核 API 都需要有效 Session。
+6. Native Agent 同步及工作回報 API 維持服務對服務連線，避免中斷 Print Server 收集。
+7. `/api/health` 只回傳健康狀態，不包含印表機、使用者或文件資料。
+
+認證資料位於 SQLite 的 `admin_users` 與 `admin_sessions`。修改帳密會撤銷既有 Session。
+
+## 14. 印表機狀態判讀
+
+Native Agent 使用 Winspool `GetPrinter(Level 2)` 讀取 `PRINTER_INFO_2.Status` 與 `Attributes`：
+
+- `online`：Windows 回報就緒，或只有列印／處理中等正常狀態。
+- `warning`：缺紙、卡紙、碳粉、門開啟或需要人員介入。
+- `offline`：離線、無法使用、Print Server 未知或 `WORK_OFFLINE`。
+
+Server 將狀態、說明及原始旗標保存於 `printers`，Dashboard 以綠／黃／紅燈呈現。各廠牌驅動程式回報能力不同，仍需與 Windows Print Management 實機對照。
+
+## 15. 單檔安裝程式架構
+
+`installer/PrintGuard.iss` 使用 Inno Setup 產生單一 `PrintGuard-Setup.exe`。內含 Server、Native Agent、Service Host 與操作文件。
+
+安裝時取得系統管理員權限，停止舊服務但保留資料，更新執行檔，重建相依於 Spooler 的自動延遲啟動服務、失敗復原規則與 Domain TCP 8080 防火牆規則。升級不執行資料刪除。
+
+從 Windows 已安裝應用程式解除安裝時，會先警告資料永久刪除，再移除服務、防火牆規則及整個 `C:\ProgramData\PrintGuard`，包含資料庫、Log 與匯入檔。
+
+`installer/Build-Installer.ps1` 負責重建三個自包含 EXE、整理文件並呼叫 Inno Setup Compiler。輸出位於 Git 忽略的 `build/setup-exe`，二進位檔不提交到原始碼分支。
+
+## 16. 已知限制與後續方向
 
 - Spooler 工作存在時間很短，雖已使用通知加輪詢，仍應持續和設備硬體計數或 PaperCut 抽樣比對。
 - 廠商驅動的私有 DEVMODE 可能造成標準色彩／雙面欄位不準。
 - 目前設備指紋沒有實體序號或連接埠，同驅動設備可能共用設定檔。
 - 目前強制政策是阻擋，不是自動改寫列印內容。
 - 設備 CSV 目前以 SHARP 欄位格式為主；其他品牌需要各自的解析器，但可共用匯入、去重與報表架構。
-- Dashboard 尚未提供登入、權限分級與遠端 HTTPS。
+- Dashboard 已提供單一管理員登入，但尚未提供角色分級、AD整合與遠端 HTTPS。
 - 資料庫工作紀錄目前沒有自動保留期限；只有 Log 與匯入原始檔是30天。

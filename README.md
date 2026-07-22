@@ -24,7 +24,8 @@ PrintGuard
 ├─ web/                         管理網頁
 ├─ native-agent/                Windows Print Spooler原生Agent（.NET）
 ├─ service-host/                Windows Service宿主與程序監督（.NET）
-├─ deployment-service/          正式服務安裝、狀態與解除安裝腳本
+├─ deployment-service/          開發及相容性服務管理腳本
+├─ installer/                   單一 PrintGuard-Setup.exe 建置設定
 ├─ tests/                       Python API與政策測試
 ├─ SYSTEM_ARCHITECTURE_AND_CODE_GUIDE.md
 ├─ SERVICE_DEPLOYMENT.md
@@ -60,16 +61,17 @@ dotnet build .\service-host\PrintGuard.ServiceHost.csproj -c Release
 
 - [完整架構與程式碼責任](SYSTEM_ARCHITECTURE_AND_CODE_GUIDE.md)
 - [Windows Service部署](SERVICE_DEPLOYMENT.md)
+- [安裝、升級與完整解除安裝](INSTALLATION_AND_UNINSTALL_GUIDE.md)
 - [設備CSV匯入](DEVICE_CSV_IMPORT.md)
 - [自動設備設定檔計畫](AUTO_DEVICE_PROFILE_PLAN.md)
-- [r10／r11版本與切換](RELEASES.md)
+- [版本與切換紀錄](RELEASES.md)
 - [GitHub發佈與資料保護](GITHUB_PUBLISHING.md)
 
 ## 資料與資安
 
 正式執行資料位於 `C:\ProgramData\PrintGuard`，不應提交到GitHub。資料庫、Log、設備CSV、PaperCut報表、DEVMODE診斷檔、編譯輸出及安裝ZIP都已由 `.gitignore` 排除。
 
-r11 LAN版沒有登入驗證或HTTPS，只能放在受信任公司Domain網路，不得將TCP 8080直接公開到Internet。
+v0.12.1 LAN版已提供管理者登入驗證，但目前仍未內建 HTTPS，只能放在受信任公司 Domain 網路，不得將 TCP 8080 直接公開到 Internet。
 
 ## 發行檔
 
