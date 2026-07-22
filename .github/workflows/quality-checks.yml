@@ -1,0 +1,57 @@
+name: PrintGuard quality checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Run Python tests
+        run: python -m unittest discover -s tests -v
+
+  dotnet-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build native agent
+        run: dotnet build native-agent/PrintGuard.NativeAgent.csproj --configuration Release
+      - name: Build service host
+        run: dotnet build service-host/PrintGuard.ServiceHost.csproj --configuration Release
+
+  powershell-syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate deployment scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem deployment-service -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              $errors | ForEach-Object { Write-Error "${_}" }
+            }
+          }
+          if ($failed) { exit 1 }
