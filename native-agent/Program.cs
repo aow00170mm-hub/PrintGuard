@@ -187,19 +187,19 @@ static Task<HttpResponseMessage> PostJson(HttpClient client,string path,object v
 
 record SyncResponse(Dictionary<string,int> printer_map,Dictionary<string,string> policy_map,Dictionary<string,DeviceProfile> profile_map);
 record DeviceProfile(string color_mode,string duplex_mode,bool trust_color_standard,bool trust_duplex_standard,string profile_status);
-record PrinterDevice(string name,string status,string driver_name,string port_name,bool shared,string device_fingerprint,int driver_version,bool? supports_color,bool? supports_duplex);
+record PrinterDevice(string name,string status,string status_detail,uint status_value,uint attributes,string driver_name,string port_name,bool shared,string device_fingerprint,int driver_version,bool? supports_color,bool? supports_duplex);
 record PolicySettings(string Mode,Dictionary<string,string> Policies);
 record PrintJob(uint JobId,string Instance,string User,string Document,string ClientMachine,string DriverName,string Datatype,uint SizeBytes,short PaperSize,uint StatusValue,int Pages,int Copies,bool Color,bool ColorKnown,bool Duplex,bool DuplexKnown,uint RawFields,short RawColor,short RawDuplex,ushort DriverExtra,byte[] PrivateData);
 static class Spooler {
   public static PrinterDevice ReadPrinterDevice(string name){
-    var driver="";var port="";var version=0;bool? color=null,duplex=null;
+    var driver="";var port="";var version=0;var status="offline";var detail="無法開啟列印佇列";uint statusValue=0,attributes=0;bool? color=null,duplex=null;
     if(NativeMethods.OpenPrinter(name,out var h,IntPtr.Zero)){
       try{
         NativeMethods.GetPrinter(h,2,IntPtr.Zero,0,out var needed);
         if(needed>0){
           var p=Marshal.AllocHGlobal(needed);
           try{if(NativeMethods.GetPrinter(h,2,p,needed,out _)){
-            var info=Marshal.PtrToStructure<NativeMethods.PRINTER_INFO_2>(p);driver=NativeMethods.S(info.DriverName);port=NativeMethods.S(info.PortName);
+            var info=Marshal.PtrToStructure<NativeMethods.PRINTER_INFO_2>(p);driver=NativeMethods.S(info.DriverName);port=NativeMethods.S(info.PortName);statusValue=info.Status;attributes=info.Attributes;(status,detail)=ClassifyStatus(statusValue,attributes);
             if(info.DevMode!=IntPtr.Zero)version=Marshal.PtrToStructure<NativeMethods.DEVMODE>(info.DevMode).DriverVersion;
             var c=NativeMethods.DeviceCapabilities(name,port,NativeMethods.DC_COLORDEVICE,IntPtr.Zero,info.DevMode);if(c>=0)color=c>0;
             var d=NativeMethods.DeviceCapabilities(name,port,NativeMethods.DC_DUPLEX,IntPtr.Zero,info.DevMode);if(d>=0)duplex=d>0;
@@ -209,7 +209,12 @@ static class Spooler {
     }
     var identity=$"{driver.Trim().ToUpperInvariant()}|{version}|{color?.ToString()??"?"}|{duplex?.ToString()??"?"}";
     var fingerprint=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
-    return new(name,"online",driver,port,name.StartsWith("\\\\"),fingerprint,version,color,duplex);
+    return new(name,status,detail,statusValue,attributes,driver,port,name.StartsWith("\\\\"),fingerprint,version,color,duplex);
+  }
+  private static (string,string) ClassifyStatus(uint value,uint attributes){
+    if((attributes&NativeMethods.PRINTER_ATTRIBUTE_WORK_OFFLINE)!=0||(value&(NativeMethods.PRINTER_STATUS_OFFLINE|NativeMethods.PRINTER_STATUS_NOT_AVAILABLE|NativeMethods.PRINTER_STATUS_SERVER_UNKNOWN))!=0)return("offline",$"離線（0x{value:X8}／0x{attributes:X8}）");
+    var warnings=NativeMethods.PRINTER_STATUS_ERROR|NativeMethods.PRINTER_STATUS_PAPER_JAM|NativeMethods.PRINTER_STATUS_PAPER_OUT|NativeMethods.PRINTER_STATUS_MANUAL_FEED|NativeMethods.PRINTER_STATUS_PAPER_PROBLEM|NativeMethods.PRINTER_STATUS_OUTPUT_BIN_FULL|NativeMethods.PRINTER_STATUS_TONER_LOW|NativeMethods.PRINTER_STATUS_NO_TONER|NativeMethods.PRINTER_STATUS_USER_INTERVENTION|NativeMethods.PRINTER_STATUS_OUT_OF_MEMORY|NativeMethods.PRINTER_STATUS_DOOR_OPEN;
+    return(value&warnings)!=0?("warning",$"需要注意（0x{value:X8}）"):("online",value==0?"就緒":$"運作中（0x{value:X8}）");
   }
   public static bool DeleteJob(string printer,uint jobId,out int error){
     var defaults=new NativeMethods.PRINTER_DEFAULTS{DesiredAccess=NativeMethods.PRINTER_ACCESS_ADMINISTER};

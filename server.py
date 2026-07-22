@@ -10,10 +10,13 @@ import io
 import os
 import sys
 import hashlib
+import hmac
+import secrets
 import shutil
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -40,6 +43,7 @@ IMPORT_FAILED_DIR.mkdir(parents=True, exist_ok=True)
 DB = DATA_DIR / "printguard.db"
 WEB = BUNDLE_ROOT / "web"
 LOCAL_TZ = timezone(timedelta(hours=8), name="Asia/Taipei")
+AUTH_COOKIE="printguard_session";AUTH_SESSION_HOURS=8;PASSWORD_ITERATIONS=310_000
 
 
 def now():
@@ -97,6 +101,12 @@ def init_db():
           completed_pages INTEGER NOT NULL DEFAULT 0, result TEXT, error_reason TEXT,
           duplex_setting TEXT, document_name TEXT, paper_size TEXT,
           source_file TEXT NOT NULL, imported_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS admin_users (
+          id INTEGER PRIMARY KEY CHECK(id=1),username TEXT UNIQUE NOT NULL,password_salt TEXT NOT NULL,
+          password_hash TEXT NOT NULL,password_iterations INTEGER NOT NULL,updated_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS admin_sessions (
+          token_hash TEXT PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+          created_at TEXT NOT NULL,last_seen_at TEXT NOT NULL,expires_at TEXT NOT NULL);
         """)
         # Lightweight migrations keep existing demo databases usable.
         job_columns = {r[1] for r in db.execute("PRAGMA table_info(jobs)")}
@@ -115,7 +125,8 @@ def init_db():
         for name, definition in {
             "source": "TEXT NOT NULL DEFAULT 'demo'", "active": "INTEGER NOT NULL DEFAULT 1",
             "driver_name": "TEXT", "port_name": "TEXT", "shared": "INTEGER NOT NULL DEFAULT 0",
-            "device_fingerprint": "TEXT", "device_profile_id": "INTEGER"
+            "device_fingerprint": "TEXT", "device_profile_id": "INTEGER", "status_detail": "TEXT",
+            "status_value": "INTEGER NOT NULL DEFAULT 0", "attributes": "INTEGER NOT NULL DEFAULT 0"
         }.items():
             if name not in printer_columns:
                 db.execute(f"ALTER TABLE printers ADD COLUMN {name} {definition}")
@@ -133,6 +144,47 @@ def init_db():
 def rows(sql, args=()):
     with connect() as db:
         return [dict(x) for x in db.execute(sql, args).fetchall()]
+
+def _password_hash(password,salt,iterations=PASSWORD_ITERATIONS):
+    return hashlib.pbkdf2_hmac("sha256",password.encode("utf-8"),bytes.fromhex(salt),iterations).hex()
+
+def _validate_credentials(username,password):
+    username=str(username or "").strip();password=str(password or "")
+    if not 3<=len(username)<=64:raise ValueError("管理員帳號需為 3 至 64 個字元")
+    if not 10<=len(password)<=128:raise ValueError("密碼需為 10 至 128 個字元")
+    return username,password
+
+def create_admin(username,password):
+    username,password=_validate_credentials(username,password);salt=secrets.token_hex(16)
+    with connect() as db:
+        if db.execute("SELECT 1 FROM admin_users LIMIT 1").fetchone():raise ValueError("管理員帳號已完成設定")
+        db.execute("INSERT INTO admin_users(id,username,password_salt,password_hash,password_iterations,updated_at) VALUES(1,?,?,?,?,?)",(username,salt,_password_hash(password,salt),PASSWORD_ITERATIONS,now()))
+    return create_session(1)
+
+def verify_admin(username,password):
+    with connect() as db:user=db.execute("SELECT * FROM admin_users WHERE username=?",(str(username or "").strip(),)).fetchone()
+    if not user:return None
+    candidate=_password_hash(str(password or ""),user["password_salt"],user["password_iterations"])
+    return dict(user) if hmac.compare_digest(candidate,user["password_hash"]) else None
+
+def create_session(user_id):
+    token=secrets.token_urlsafe(32);digest=hashlib.sha256(token.encode()).hexdigest();created=datetime.now(timezone.utc);expires=created+timedelta(hours=AUTH_SESSION_HOURS)
+    with connect() as db:
+        db.execute("DELETE FROM admin_sessions WHERE expires_at<=?",(created.isoformat(timespec="seconds"),))
+        db.execute("INSERT INTO admin_sessions VALUES(?,?,?,?,?)",(digest,user_id,created.isoformat(timespec="seconds"),created.isoformat(timespec="seconds"),expires.isoformat(timespec="seconds")))
+    return token
+
+def session_user(token):
+    if not token:return None
+    digest=hashlib.sha256(token.encode()).hexdigest();current=now()
+    with connect() as db:
+        row=db.execute("SELECT u.id,u.username FROM admin_sessions s JOIN admin_users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?",(digest,current)).fetchone()
+        if row:db.execute("UPDATE admin_sessions SET last_seen_at=? WHERE token_hash=?",(current,digest))
+    return dict(row) if row else None
+
+def revoke_session(token):
+    if token:
+        with connect() as db:db.execute("DELETE FROM admin_sessions WHERE token_hash=?",(hashlib.sha256(token.encode()).hexdigest(),))
 
 
 def evaluate(policy, capable, requested_color):
@@ -327,12 +379,14 @@ def sync_devices(devices):
                   driver_version=excluded.driver_version,updated_at=excluded.updated_at""",
                   (fingerprint,str(item.get("driver_name","")),item.get("driver_version"),color_mode,duplex_mode,now()))
                 profile_id=db.execute("SELECT id FROM device_profiles WHERE fingerprint=?",(fingerprint,)).fetchone()["id"]
-            db.execute("""INSERT INTO printers(name,location,status,color_capable,policy,updated_at,source,active,driver_name,port_name,shared,device_fingerprint,device_profile_id)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET location=excluded.location,status=excluded.status,
+            db.execute("""INSERT INTO printers(name,location,status,color_capable,policy,updated_at,source,active,driver_name,port_name,shared,device_fingerprint,device_profile_id,status_detail,status_value,attributes)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET location=excluded.location,status=excluded.status,
               updated_at=excluded.updated_at,source='windows',active=1,driver_name=excluded.driver_name,port_name=excluded.port_name,
-              shared=excluded.shared,device_fingerprint=excluded.device_fingerprint,device_profile_id=excluded.device_profile_id""",
+              shared=excluded.shared,device_fingerprint=excluded.device_fingerprint,device_profile_id=excluded.device_profile_id,
+              status_detail=excluded.status_detail,status_value=excluded.status_value,attributes=excluded.attributes""",
               (name,str(item.get("location") or item.get("port_name") or "Windows"),status,1,"any",now(),"windows",1,
-               str(item.get("driver_name","")),str(item.get("port_name","")),bool(item.get("shared")),fingerprint,profile_id))
+               str(item.get("driver_name","")),str(item.get("port_name","")),bool(item.get("shared")),fingerprint,profile_id,
+               str(item.get("status_detail",status)),int(item.get("status_value",0)),int(item.get("attributes",0))))
         current=list(db.execute("""SELECT p.id,p.name,p.policy,d.color_mode,d.duplex_mode,d.trust_color_standard,d.trust_duplex_standard,d.profile_status
           FROM printers p LEFT JOIN device_profiles d ON d.id=p.device_profile_id WHERE p.source='windows' AND p.active=1"""))
         return {"ok":True,"printer_map":{r["name"]:r["id"] for r in current},
@@ -349,12 +403,28 @@ class API(BaseHTTPRequestHandler):
             stream.write(message)
         if not FROZEN: print(message, end="")
 
-    def send_json(self, value, status=200):
+    def send_json(self,value,status=200,headers=None):
         body = json.dumps(value, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control","no-store")
+        for key,content in (headers or {}).items():self.send_header(key,content)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers(); self.wfile.write(body)
+
+    def auth_token(self):
+        try:
+            cookie=SimpleCookie();cookie.load(self.headers.get("Cookie",""));return cookie[AUTH_COOKIE].value if AUTH_COOKIE in cookie else None
+        except Exception:return None
+
+    def admin(self):return session_user(self.auth_token())
+
+    def require_admin(self):
+        user=self.admin()
+        if not user:self.send_json({"error":"需要管理員登入","authentication_required":True},401)
+        return user
+
+    def session_header(self,token):return f"{AUTH_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={AUTH_SESSION_HOURS*3600}"
 
     def send_csv(self, data, filename, group="user"):
         output = io.StringIO(); writer = csv.writer(output)
@@ -379,6 +449,12 @@ class API(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path); path = parsed.path
+        if path=="/api/health":return self.send_json({"ok":True})
+        if path=="/api/auth/status":
+            user=self.admin();configured=bool(rows("SELECT 1 configured FROM admin_users LIMIT 1"))
+            return self.send_json({"configured":configured,"authenticated":bool(user),"username":user["username"] if user else None})
+        protected={"/api/dashboard","/api/audit","/api/violations","/api/reports/usage","/api/reports/export.csv","/api/device-imports"}
+        if path in protected and not self.require_admin():return
         if path == "/api/dashboard":
             local_now = datetime.now(LOCAL_TZ)
             local_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -424,7 +500,8 @@ class API(BaseHTTPRequestHandler):
             return self.send_csv(data,f"printguard-{group}-{period}-{value}.csv",group)
         if path == "/api/device-imports":
             return self.send_json(rows("SELECT * FROM device_import_batches ORDER BY id DESC LIMIT 20"))
-        rel = "index.html" if path == "/" else path.lstrip("/")
+        if path in ("/","/index.html") and not self.admin():rel="login.html"
+        else:rel = "index.html" if path == "/" else path.lstrip("/")
         target = (WEB / rel).resolve()
         if WEB.resolve() not in target.parents and target != WEB.resolve():
             return self.send_error(403)
@@ -436,6 +513,7 @@ class API(BaseHTTPRequestHandler):
     def do_PATCH(self):
         path = urlparse(self.path).path
         if not path.startswith("/api/printers/"): return self.send_error(404)
+        if not self.require_admin():return
         try: pid = int(path.rsplit("/", 1)[1]); data = self.body()
         except (ValueError, json.JSONDecodeError): return self.send_json({"error":"格式錯誤"}, 400)
         policy = data.get("policy")
@@ -448,7 +526,36 @@ class API(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path=="/api/auth/setup":
+            try:
+                data=self.body();token=create_admin(data.get("username"),data.get("password"));return self.send_json({"ok":True,"username":str(data.get("username")).strip()},201,{"Set-Cookie":self.session_header(token)})
+            except (ValueError,json.JSONDecodeError) as exc:return self.send_json({"error":str(exc)},400)
+        if path=="/api/auth/login":
+            try:data=self.body()
+            except json.JSONDecodeError:return self.send_json({"error":"登入格式錯誤"},400)
+            user=verify_admin(data.get("username"),data.get("password"))
+            if not user:return self.send_json({"error":"帳號或密碼錯誤"},401)
+            token=create_session(user["id"]);return self.send_json({"ok":True,"username":user["username"]},200,{"Set-Cookie":self.session_header(token)})
+        if path=="/api/auth/logout":
+            revoke_session(self.auth_token());return self.send_json({"ok":True},200,{"Set-Cookie":f"{AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"})
+        if path=="/api/auth/credentials":
+            user=self.require_admin()
+            if not user:return
+            try:
+                data=self.body()
+                if not verify_admin(user["username"],data.get("current_password")):return self.send_json({"error":"目前密碼錯誤"},403)
+                username=str(data.get("username") or user["username"]).strip();new_password=str(data.get("new_password") or "")
+                if new_password:username,new_password=_validate_credentials(username,new_password)
+                elif not 3<=len(username)<=64:raise ValueError("管理員帳號需為 3 至 64 個字元")
+                with connect() as db:
+                    if new_password:
+                        salt=secrets.token_hex(16);db.execute("UPDATE admin_users SET username=?,password_salt=?,password_hash=?,password_iterations=?,updated_at=? WHERE id=?",(username,salt,_password_hash(new_password,salt),PASSWORD_ITERATIONS,now(),user["id"]))
+                    else:db.execute("UPDATE admin_users SET username=?,updated_at=? WHERE id=?",(username,now(),user["id"]))
+                    db.execute("DELETE FROM admin_sessions WHERE user_id=?",(user["id"],))
+                token=create_session(user["id"]);return self.send_json({"ok":True,"username":username},200,{"Set-Cookie":self.session_header(token)})
+            except (ValueError,json.JSONDecodeError,sqlite3.IntegrityError) as exc:return self.send_json({"error":str(exc)},400)
         if path == "/api/device-imports":
+            if not self.require_admin():return
             try:
                 size=int(self.headers.get("Content-Length",0))
                 if size<1: raise ValueError("empty CSV")
@@ -459,6 +566,7 @@ class API(BaseHTTPRequestHandler):
             try: return self.send_json(sync_devices(self.body().get("printers",[])))
             except (ValueError,json.JSONDecodeError) as exc: return self.send_json({"error":str(exc)},400)
         if path.startswith("/api/device-profiles/"):
+            if not self.require_admin():return
             try: pid=int(path.rsplit("/",1)[1]);data=self.body()
             except (ValueError,json.JSONDecodeError): return self.send_json({"error":"invalid request"},400)
             allowed={"color_mode":("auto","mono","color"),"duplex_mode":("auto","simplex","duplex"),"profile_status":("auto","verified","needs_review")}
@@ -516,6 +624,7 @@ class API(BaseHTTPRequestHandler):
                 mapping = {r["name"]:r["id"] for r in current}; policies = {r["name"]:r["policy"] for r in current}
             return self.send_json({"ok":True,"printer_map":mapping,"policy_map":policies})
         if path != "/api/jobs": return self.send_error(404)
+        if not self.require_admin():return
         try:
             data = self.body(); pid = int(data["printer_id"]); pages = int(data["pages"])
             if pages < 1 or pages > 10000: raise ValueError
