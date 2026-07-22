@@ -3,6 +3,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import server
@@ -18,6 +19,8 @@ class NativeApiTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         self.base = f"http://127.0.0.1:{self.httpd.server_port}"
+        self.cookie=None
+        self.request("/api/auth/setup","POST",{"username":"admin","password":"PrintGuard-Test-123!"})
 
     def tearDown(self):
         self.httpd.shutdown()
@@ -29,16 +32,29 @@ class NativeApiTests(unittest.TestCase):
     def request(self, path, method="GET", body=None):
         data = json.dumps(body).encode() if body is not None else None
         req = Request(self.base + path, data=data, method=method,
-                      headers={"Content-Type": "application/json"})
+                      headers={"Content-Type":"application/json",**({"Cookie":self.cookie} if self.cookie else {})})
         with urlopen(req, timeout=3) as response:
+            if response.headers.get("Set-Cookie"):self.cookie=response.headers["Set-Cookie"].split(";",1)[0]
             return json.loads(response.read())
 
     def request_raw(self,path,body,filename="device.csv"):
-        req=Request(self.base+path,data=body,method="POST",headers={"Content-Type":"text/csv","X-Filename":filename})
+        req=Request(self.base+path,data=body,method="POST",headers={"Content-Type":"text/csv","X-Filename":filename,**({"Cookie":self.cookie} if self.cookie else {})})
         with urlopen(req,timeout=3) as response: return json.loads(response.read())
 
     def request_text(self,path):
-        with urlopen(self.base+path,timeout=3) as response: return response.read().decode("utf-8-sig")
+        req=Request(self.base+path,headers=({"Cookie":self.cookie} if self.cookie else {}))
+        with urlopen(req,timeout=3) as response:return response.read().decode("utf-8-sig")
+
+    def test_admin_login_protects_dashboard_and_reports(self):
+        self.request("/api/auth/logout","POST",{});self.cookie=None
+        with urlopen(self.base+"/",timeout=3) as response:self.assertIn("PrintGuard 管理員登入",response.read().decode("utf-8"))
+        for path in ("/api/dashboard","/api/reports/usage?period=daily&date=2026-07-22"):
+            with self.assertRaises(HTTPError) as denied:self.request(path)
+            self.assertEqual(denied.exception.code,401);denied.exception.close()
+        with self.assertRaises(HTTPError) as wrong:self.request("/api/auth/login","POST",{"username":"admin","password":"wrong-password"})
+        self.assertEqual(wrong.exception.code,401);wrong.exception.close()
+        result=self.request("/api/auth/login","POST",{"username":"admin","password":"PrintGuard-Test-123!"})
+        self.assertEqual(result["username"],"admin");self.assertIn("totals",self.request("/api/dashboard"))
 
     def test_web_policy_sync_and_blocked_jobs_are_excluded(self):
         sync_body = {"printers": [{"name": "VEN_02_test", "status": "online"}]}
@@ -86,11 +102,13 @@ class NativeApiTests(unittest.TestCase):
         self.assertEqual(historical_dashboard["totals"], {"jobs": 0, "pages": 0, "blocked": 0})
 
     def test_device_profile_is_reused_and_new_fingerprint_redetects(self):
-        mono = {"name":"Mono-A","status":"online","driver_name":"Universal PCL6",
+        mono = {"name":"Mono-A","status":"offline","status_detail":"離線測試","status_value":128,"attributes":1024,"driver_name":"Universal PCL6",
                 "driver_version":123,"port_name":"IP_1","device_fingerprint":"fingerprint-mono",
                 "supports_color":False,"supports_duplex":False}
         first=self.request("/api/printers/sync","POST",{"printers":[mono]})
         pid=first["printer_map"]["Mono-A"]
+        printer=next(x for x in self.request("/api/dashboard")["printers"] if x["id"]==pid)
+        self.assertEqual((printer["status"],printer["status_detail"],printer["status_value"]),("offline","離線測試",128))
         self.assertEqual(first["profile_map"]["Mono-A"]["color_mode"],"mono")
         self.assertEqual(first["profile_map"]["Mono-A"]["duplex_mode"],"simplex")
         self.request(f"/api/device-profiles/{pid}","POST",{"profile_status":"verified"})

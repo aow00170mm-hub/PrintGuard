@@ -87,7 +87,7 @@ if($LASTEXITCODE-ne0){Write-Warning "Failure-action flag configuration failed: $
 Start-Service $serviceName
 $service=Get-Service $serviceName;$service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
 $ready=$false
-for($i=0;$i-lt30;$i++){Start-Sleep -Seconds 1;try{Invoke-RestMethod 'http://127.0.0.1:8080/api/dashboard' -TimeoutSec 2|Out-Null;$ready=$true;break}catch{}}
+for($i=0;$i-lt30;$i++){Start-Sleep -Seconds 1;try{Invoke-RestMethod 'http://127.0.0.1:8080/api/health' -TimeoutSec 2|Out-Null;$ready=$true;break}catch{}}
 if(!$ready){throw "Service is running but API did not become ready. Check $logs\service"}
 Write-Host 'PrintGuard Windows Service installed and running.' -ForegroundColor Green
 $installed=Get-CimInstance Win32_Service -Filter "Name='PrintGuard'"
