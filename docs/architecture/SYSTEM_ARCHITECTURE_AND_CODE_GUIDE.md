@@ -19,7 +19,7 @@ PrintGuard 是安裝在 Windows Print Server 上的列印治理系統，主要�
 - `PrintGuard-Windows-Service-Installer-20260722-r10.zip`：本機限定版，只監聽 `127.0.0.1:8080`。
 - `PrintGuard-Windows-Service-LAN-Installer-20260722-r11.zip`：公司 Domain LAN版，監聽 `0.0.0.0:8080`，並只在 Windows Domain Profile 放行 TCP 8080。
 
-安裝ZIP不提交到Git；內部備份位置、SHA-256及版本切換方式記錄於 [RELEASES.md](RELEASES.md)，對外發佈應使用GitHub Release Assets。
+安裝ZIP不提交到Git；內部備份位置、SHA-256及版本切換方式記錄於 [版本紀錄](../RELEASES.md)，對外發佈應使用GitHub Release Assets。
 
 ## 2. 整體架構
 
@@ -146,6 +146,7 @@ Server 的監聽方式依安裝版本而異：r10只監聽 `127.0.0.1:8080`；r1
 
 | API | 責任 |
 |---|---|
+| `GET /api/public/dashboard` | 免登入，只回傳今日整體統計與設備狀態數量 |
 | `GET /api/dashboard` | 設備、最新5筆工作及總覽數字 |
 | `GET /api/violations` | 最新50筆被阻擋工作 |
 | `GET /api/reports/usage` | 日／月報表查詢 |
@@ -264,6 +265,8 @@ Service Host 若發現 Server 或 Agent 意外離開，會等待5秒後重新啟
 | 路徑 | 責任 |
 |---|---|
 | `web/index.html` | 基礎頁面骨架、總覽、設備、工作、報表及違規表格 |
+| `web/overview.html`、`web/overview.js` | 免登入的公開總覽，只顯示彙總數字 |
+| `web/public-overview.css` | 公開總覽專用樣式 |
 | `web/app.js` | 呼叫 API、畫面渲染、政策／設定檔修改、查詢、匯出、匯入及側邊分頁 |
 | `web/styles.css` | 版面、側邊欄、卡片、表格、狀態及響應式樣式 |
 
@@ -275,11 +278,11 @@ Service Host 若發現 Server 或 Agent 意外離開，會等待5秒後重新啟
 | `deployment-service/Install-PrintGuard-Service.ps1` | 停止／升級舊服務、保留資料、複製程式、建立服務、設定復原並驗證 API |
 | `deployment-service/Status-PrintGuard-Service.ps1` | 查看服務、子程序及 Dashboard 狀態 |
 | `deployment-service/Uninstall-PrintGuard-Service.ps1` | 移除服務；預設保留資料 |
-| `RELEASES.md` | r10／r11檔名、SHA-256、內部備份位置與版本切換方式 |
+| `docs/RELEASES.md` | 發行檔名、SHA-256、內部備份位置與版本切換方式 |
 | `installer/PrintGuard.iss` | 單一 EXE 安裝、升級、服務／防火牆建立及完整解除安裝規則 |
 | `installer/Build-Installer.ps1` | 重建 Server、Agent、Service Host 並編譯安裝程式 |
 | `installer/Test-Installer-Uninstall.ps1` | 驗證檔案安裝、測試資料庫建立與完整移除 |
-| `INSTALLATION_AND_UNINSTALL_GUIDE.md` | 管理者安裝、升級、備份、登入與解除安裝手冊 |
+| `docs/installation/INSTALLATION_AND_UNINSTALL_GUIDE.md` | 管理者安裝、升級、備份、登入與解除安裝手冊 |
 
 ### 9.5 網頁登入與狀態顯示
 
@@ -289,7 +292,7 @@ Service Host 若發現 Server 或 Agent 意外離開，會等待5秒後重新啟
 | `web/auth-ui.js` | 登出、工作階段失效及受保護頁面共用邏輯 |
 | `web/auth.css` | 登入畫面樣式 |
 | `web/status.css` | 印表機真實 Queue 狀態視覺提示 |
-| `GITHUB_PUBLISHING.md` | GitHub可提交／不可提交資料及發佈前檢查 |
+| `docs/development/GITHUB_PUBLISHING.md` | GitHub可提交／不可提交資料及發佈前檢查 |
 
 ### 9.6 測試、診斷與舊版
 
@@ -334,13 +337,14 @@ Log 可能包含 AD 使用者、文件名稱、用戶端電腦及列印設定，
 
 ## 13. 管理員認證架構
 
-1. 未登入瀏覽 `/` 時，Server 只提供獨立的 `login.html`。
-2. 首次使用透過 `POST /api/auth/setup` 建立唯一管理員。
-3. 密碼以 PBKDF2-HMAC-SHA256、隨機 Salt 與310,000次迭代保存，不儲存明碼。
-4. 登入後取得 `HttpOnly`、`SameSite=Strict`、有效期8小時的 Cookie。
-5. 資料查詢、報表、CSV匯入、政策修改及稽核 API 都需要有效 Session。
-6. Native Agent 同步及工作回報 API 維持服務對服務連線，避免中斷 Print Server 收集。
-7. `/api/health` 只回傳健康狀態，不包含印表機、使用者或文件資料。
+1. 未登入瀏覽 `/` 時，Server 提供 `overview.html` 公開總覽。
+2. `GET /api/public/dashboard` 只提供彙總數字，不包含使用者、文件或工作明細。
+3. 首次使用透過 `POST /api/auth/setup` 建立唯一管理員。
+4. 密碼以 PBKDF2-HMAC-SHA256、隨機 Salt 與310,000次迭代保存，不儲存明碼。
+5. 登入後取得 `HttpOnly`、`SameSite=Strict`、有效期8小時的 Cookie。
+6. 設備明細、工作、報表、CSV匯入、政策修改及稽核 API 都需要有效 Session。
+7. Native Agent 同步及工作回報 API 維持服務對服務連線，避免中斷 Print Server 收集。
+8. `/api/health` 只回傳健康狀態，不包含印表機、使用者或文件資料。
 
 認證資料位於 SQLite 的 `admin_users` 與 `admin_sessions`。修改帳密會撤銷既有 Session。
 

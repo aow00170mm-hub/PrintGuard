@@ -1,5 +1,17 @@
 # PrintGuard 評估版本
 
+## v0.13.0 公開總覽測試版
+
+檔案：`PrintGuard-Setup-0.13.0.exe`
+
+- 未登入即可查看公開總覽，只顯示今日完成工作、頁數、政策攔截與設備狀態數量。
+- 使用者、文件名稱、列印工作、報表、CSV 匯入、印表機設定與政策攔截仍需管理員登入。
+- 詳細文件已分類到 `docs`，根目錄保留主要程式入口與 GitHub 標準文件。
+- 使用與 v0.12.1 相同的 AppId，可直接覆蓋升級並保留資料。
+- v0.11.0、v0.12.1 的 Git tag、Release 與私人備份均不刪除。
+
+SHA-256：`BDD5B5B23BF231297A20E85CA5A48BE0CD1FD8A3213FA49BF9A191C292A55CA7`
+
 大型自包含安裝包不提交到Git原始碼歷史。2026-07-22的內部封裝保存在：
 
 `C:\code\PrintGuard-private-backup-20260722\dist\versions`

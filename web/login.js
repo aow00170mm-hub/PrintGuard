@@ -4,7 +4,7 @@ async function initialize(){
   if(status.authenticated){location.replace('/');return}
   setup=!status.configured;
   $('#loginTitle').textContent=setup?'建立第一位管理員':'管理員登入';
-  $('#loginHint').textContent=setup?'首次使用請自行建立帳號，以及至少 10 個字元的密碼。':'登入後才能查看列印工作、報表與管理設定。';
+  $('#loginHint').textContent=setup?'首次使用請自行建立帳號，以及至少 10 個字元的密碼。':'公開總覽不需登入；列印工作、報表與管理設定需要管理員認證。';
   $('#loginSubmit').textContent=setup?'建立並登入':'登入';
   if(setup)$('#username').value='admin';
 }

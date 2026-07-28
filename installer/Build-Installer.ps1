@@ -33,7 +33,7 @@ if($LASTEXITCODE-ne0){throw 'PrintGuard.ServiceHost build failed.'}
 Copy-Item (Join-Path $build 'server\PrintGuard.Server.exe') (Join-Path $payload 'bin') -Force
 Copy-Item (Join-Path $build 'agent\PrintGuard.NativeAgent.exe') (Join-Path $payload 'bin') -Force
 Copy-Item (Join-Path $build 'host\PrintGuard.ServiceHost.exe') (Join-Path $payload 'bin') -Force
-Copy-Item (Join-Path $repo 'INSTALLATION_AND_UNINSTALL_GUIDE.md'),(Join-Path $repo 'SYSTEM_ARCHITECTURE_AND_CODE_GUIDE.md'),(Join-Path $repo 'SERVICE_DEPLOYMENT.md') (Join-Path $payload 'docs') -Force
+Copy-Item (Join-Path $repo 'docs\installation\INSTALLATION_AND_UNINSTALL_GUIDE.md'),(Join-Path $repo 'docs\architecture\SYSTEM_ARCHITECTURE_AND_CODE_GUIDE.md'),(Join-Path $repo 'docs\installation\SERVICE_DEPLOYMENT.md') (Join-Path $payload 'docs') -Force
 
 & $iscc "/DSourceRoot=$payload" "/DOutputDir=$OutputDirectory" "/DAppVersion=$Version" (Join-Path $PSScriptRoot 'PrintGuard.iss')
 if($LASTEXITCODE-ne0){throw 'Inno Setup compilation failed.'}

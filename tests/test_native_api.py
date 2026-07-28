@@ -47,7 +47,12 @@ class NativeApiTests(unittest.TestCase):
 
     def test_admin_login_protects_dashboard_and_reports(self):
         self.request("/api/auth/logout","POST",{});self.cookie=None
-        with urlopen(self.base+"/",timeout=3) as response:self.assertIn("PrintGuard 管理員登入",response.read().decode("utf-8"))
+        with urlopen(self.base+"/",timeout=3) as response:
+            self.assertIn("列印服務總覽",response.read().decode("utf-8"))
+        public=self.request("/api/public/dashboard")
+        self.assertEqual(set(public),{"totals","devices"})
+        self.assertEqual(set(public["totals"]),{"jobs","pages","blocked"})
+        self.assertEqual(set(public["devices"]),{"total","online","warning","offline"})
         for path in ("/api/dashboard","/api/reports/usage?period=daily&date=2026-07-22"):
             with self.assertRaises(HTTPError) as denied:self.request(path)
             self.assertEqual(denied.exception.code,401);denied.exception.close()

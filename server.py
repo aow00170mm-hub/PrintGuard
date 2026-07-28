@@ -453,6 +453,21 @@ class API(BaseHTTPRequestHandler):
         if path=="/api/auth/status":
             user=self.admin();configured=bool(rows("SELECT 1 configured FROM admin_users LIMIT 1"))
             return self.send_json({"configured":configured,"authenticated":bool(user),"username":user["username"] if user else None})
+        if path=="/api/public/dashboard":
+            local_now=datetime.now(LOCAL_TZ)
+            local_start=local_now.replace(hour=0,minute=0,second=0,microsecond=0)
+            utc_start=local_start.astimezone(timezone.utc).isoformat(timespec="seconds")
+            utc_end=(local_start+timedelta(days=1)).astimezone(timezone.utc).isoformat(timespec="seconds")
+            totals=rows("""SELECT COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END),0) jobs,
+              COALESCE(SUM(CASE WHEN status='completed' THEN pages*copies ELSE 0 END),0) pages,
+              COALESCE(SUM(CASE WHEN status='blocked' THEN 1 ELSE 0 END),0) blocked
+              FROM jobs WHERE source!='simulator' AND created_at>=? AND created_at<?""",(utc_start,utc_end))[0]
+            devices=rows("""SELECT COUNT(*) total,
+              COALESCE(SUM(CASE WHEN status='online' THEN 1 ELSE 0 END),0) online,
+              COALESCE(SUM(CASE WHEN status='warning' THEN 1 ELSE 0 END),0) warning,
+              COALESCE(SUM(CASE WHEN status='offline' THEN 1 ELSE 0 END),0) offline
+              FROM printers WHERE active=1""")[0]
+            return self.send_json({"totals":totals,"devices":devices})
         protected={"/api/dashboard","/api/audit","/api/violations","/api/reports/usage","/api/reports/export.csv","/api/device-imports"}
         if path in protected and not self.require_admin():return
         if path == "/api/dashboard":
@@ -500,8 +515,9 @@ class API(BaseHTTPRequestHandler):
             return self.send_csv(data,f"printguard-{group}-{period}-{value}.csv",group)
         if path == "/api/device-imports":
             return self.send_json(rows("SELECT * FROM device_import_batches ORDER BY id DESC LIMIT 20"))
-        if path in ("/","/index.html") and not self.admin():rel="login.html"
-        else:rel = "index.html" if path == "/" else path.lstrip("/")
+        if path in ("/","/index.html"):
+            rel="index.html" if self.admin() else "overview.html"
+        else:rel=path.lstrip("/")
         target = (WEB / rel).resolve()
         if WEB.resolve() not in target.parents and target != WEB.resolve():
             return self.send_error(403)

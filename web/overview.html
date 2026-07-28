@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PrintGuard 公開總覽</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="public-overview.css">
+</head>
+<body class="public-page">
+  <main class="public-shell">
+    <header class="public-header">
+      <div>
+        <div class="public-brand"><span>PG</span><b>PrintGuard</b></div>
+        <p class="eyebrow">列印治理中心</p>
+        <h1>列印服務總覽</h1>
+        <p>此頁只顯示整體統計，不公開使用者、文件名稱或報表內容。</p>
+      </div>
+      <div class="public-actions">
+        <button id="refresh" type="button">重新整理</button>
+        <a class="admin-login" href="/login.html">管理員登入</a>
+      </div>
+    </header>
+    <section class="stats public-stats" aria-label="列印統計">
+      <article><small>今日完成工作</small><strong id="totalJobs">—</strong><em>成功列印筆數</em></article>
+      <article><small>今日列印頁數</small><strong id="totalPages">—</strong><em>完成頁面數</em></article>
+      <article><small>今日政策攔截</small><strong id="blocked">—</strong><em>已阻擋筆數</em></article>
+      <article><small>在線設備</small><strong id="online">—</strong><em id="deviceSummary">等待資料</em></article>
+    </section>
+    <section class="public-status panel">
+      <div>
+        <p class="eyebrow">服務狀態</p>
+        <h2 id="statusTitle">正在讀取 PrintGuard</h2>
+        <p id="statusMessage">請稍候，系統正在取得最新統計。</p>
+      </div>
+      <i id="statusDot" class="status-dot"></i>
+    </section>
+    <p class="public-note">統計由 Windows Print Server 上的 PrintGuard 服務提供；詳細工作與管理功能需要登入。</p>
+  </main>
+  <script src="overview.js"></script>
+</body>
+</html>

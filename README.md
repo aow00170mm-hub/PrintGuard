@@ -2,6 +2,8 @@
 
 PrintGuard 是部署於 Windows Print Server 的列印監控與治理系統。它透過 Windows Print Spooler 原生 API 收集 Queue、AD／Windows 使用者、文件名稱、頁數、份數、彩色／黑白及單面／雙面資料，提供網頁查詢、政策稽核、CSV匯入與日／月報表。
 
+公開總覽不需要登入，只顯示今日列印統計與設備狀態數量；列印工作、使用者、文件、報表與所有管理設定仍需管理員登入。
+
 ## 目前功能
 
 - 自動發現 Print Server 可見的所有列印佇列。
@@ -27,12 +29,9 @@ PrintGuard
 ├─ deployment-service/          開發及相容性服務管理腳本
 ├─ installer/                   單一 PrintGuard-Setup.exe 建置設定
 ├─ tests/                       Python API與政策測試
-├─ SYSTEM_ARCHITECTURE_AND_CODE_GUIDE.md
-├─ SERVICE_DEPLOYMENT.md
-├─ DEVICE_CSV_IMPORT.md
-├─ AUTO_DEVICE_PROFILE_PLAN.md
-├─ RELEASES.md
-└─ GITHUB_PUBLISHING.md
+├─ docs/                        架構、安裝、操作、開發及舊版文件
+├─ README.md                    專案入口
+└─ SECURITY.md                  資安政策
 ```
 
 ## 開發與測試
@@ -59,13 +58,14 @@ dotnet build .\service-host\PrintGuard.ServiceHost.csproj -c Release
 
 ## 文件
 
-- [完整架構與程式碼責任](SYSTEM_ARCHITECTURE_AND_CODE_GUIDE.md)
-- [Windows Service部署](SERVICE_DEPLOYMENT.md)
-- [安裝、升級與完整解除安裝](INSTALLATION_AND_UNINSTALL_GUIDE.md)
-- [設備CSV匯入](DEVICE_CSV_IMPORT.md)
-- [自動設備設定檔計畫](AUTO_DEVICE_PROFILE_PLAN.md)
-- [版本與切換紀錄](RELEASES.md)
-- [GitHub發佈與資料保護](GITHUB_PUBLISHING.md)
+- [文件總覽](docs/README.md)
+- [完整架構與程式碼責任](docs/architecture/SYSTEM_ARCHITECTURE_AND_CODE_GUIDE.md)
+- [Windows Service部署](docs/installation/SERVICE_DEPLOYMENT.md)
+- [安裝、升級與完整解除安裝](docs/installation/INSTALLATION_AND_UNINSTALL_GUIDE.md)
+- [設備CSV匯入](docs/operations/DEVICE_CSV_IMPORT.md)
+- [自動設備設定檔計畫](docs/development/AUTO_DEVICE_PROFILE_PLAN.md)
+- [版本與切換紀錄](docs/RELEASES.md)
+- [GitHub發佈與資料保護](docs/development/GITHUB_PUBLISHING.md)
 
 ## 資料與資安
 
@@ -75,5 +75,5 @@ v0.12.1 LAN版已提供管理者登入驗證，但目前仍未內建 HTTPS，只
 
 ## 發行檔
 
-自包含EXE與安裝ZIP不存放在原始碼儲存庫。內部備份位置及目前版本SHA-256記錄於 [RELEASES.md](RELEASES.md)；若透過GitHub發佈，請使用GitHub Releases Assets。
+自包含EXE與安裝ZIP不存放在原始碼儲存庫。內部備份位置及目前版本SHA-256記錄於 [版本紀錄](docs/RELEASES.md)；若透過GitHub發佈，請使用GitHub Releases Assets。
 
