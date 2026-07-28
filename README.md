@@ -71,9 +71,16 @@ dotnet build .\service-host\PrintGuard.ServiceHost.csproj -c Release
 
 正式執行資料位於 `C:\ProgramData\PrintGuard`，不應提交到GitHub。資料庫、Log、設備CSV、PaperCut報表、DEVMODE診斷檔、編譯輸出及安裝ZIP都已由 `.gitignore` 排除。
 
-v0.12.1 LAN版已提供管理者登入驗證，但目前仍未內建 HTTPS，只能放在受信任公司 Domain 網路，不得將 TCP 8080 直接公開到 Internet。
+v0.13.0 提供免登入的唯讀公開總覽；使用者、文件、工作明細、報表及設定仍受管理者登入保護。目前尚未內建 HTTPS，只能放在受信任公司 Domain 網路，不得將 TCP 8080 直接公開到 Internet。
 
 ## 發行檔
 
-自包含EXE與安裝ZIP不存放在原始碼儲存庫。內部備份位置及目前版本SHA-256記錄於 [版本紀錄](docs/RELEASES.md)；若透過GitHub發佈，請使用GitHub Releases Assets。
+目前測試版本：**v0.13.0**
+
+- [下載 PrintGuard v0.13.0](https://github.com/aow00170mm-hub/PrintGuard/releases/tag/v0.13.0)
+- 安裝檔：`PrintGuard-Setup-0.13.0.exe`
+- SHA-256：`BDD5B5B23BF231297A20E85CA5A48BE0CD1FD8A3213FA49BF9A191C292A55CA7`
+- v0.11.0 與 v0.12.1 仍保留於 GitHub Releases，可供測試或回復評估。
+
+自包含 EXE 不存放在原始碼目錄，而是放在 GitHub Releases Assets。完整版本紀錄、私人備份位置及 SHA-256 請見 [版本紀錄](docs/RELEASES.md)。
 
